@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Case Brief Builder</title>
+  <link rel="icon" href="./favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f6f7f9; --panel: #ffffff; --text: #1c2430; --muted: #5d6877;
+      --border: #d9dee5; --accent: #1f4e8c; --accent-text: #ffffff;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12161c; --panel: #1b212a; --text: #e6eaf0; --muted: #9aa5b4;
+        --border: #2c3542; --accent: #5b9bf0; --accent-text: #0c1118;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.5; }
+    .app { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .app-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .app-header h1 { margin: 0; font-size: 1.5rem; }
+    .logo { height: 36px; width: 36px; }
+    .subtitle { margin: 0 0 16px; color: var(--muted); }
+    .layout { display: grid; gap: 16px; }
+    @media (min-width: 800px) { .layout { grid-template-columns: 1fr 1fr; align-items: start; } }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .panel h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; margin-bottom: 4px; font-size: 0.85rem; font-weight: 600; }
+    .field input, .field textarea { width: 100%; padding: 10px; font: inherit; color: var(--text);
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+    .field textarea { resize: vertical; }
+    .field input:focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .btn { padding: 10px 16px; font: inherit; font-weight: 600; color: var(--accent-text);
+      background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+    .btn-secondary { color: var(--text); background: transparent; border: 1px solid var(--border); }
+    .brief-title { margin: 0; font-size: 1.2rem; }
+    .brief-citation { font-weight: 400; color: var(--muted); }
+    .brief-court { margin: 2px 0 12px; color: var(--muted); }
+    .brief-section h4 { margin: 14px 0 4px; font-size: 0.8rem; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--accent); }
+    .brief-section p { margin: 0; white-space: pre-wrap; }
+    .hint { margin: 16px 0; font-size: 0.85rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div id="root">Loading…</div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    /* ---------- LOGIC (was lib/brief.js) ---------- */
+    const HEADER_FIELDS = [
+      { key: "caseName", label: "Case name", type: "input", placeholder: "Okonkwo v Adeyemi" },
+      { key: "citation", label: "Citation", type: "input", placeholder: "(2019) 8 NWLR (Pt. 1674) 123" },
+      {
+        key: "court", label: "Court", type: "input", placeholder: "Supreme Court of Nigeria",
+        options: [
+          "Supreme Court of Nigeria", "Court of Appeal", "Federal High Court",
+          "High Court of a State", "High Court of the FCT", "National Industrial Court",
+          "Sharia Court of Appeal", "Customary Court of Appeal", "Magistrate's Court",
+          "Election Petition Tribunal", "Privy Council (older cases)",
+        ],
+      },
+    ];
+
+    const SECTION_FIELDS = [
+      { key: "facts", label: "Facts", type: "textarea" },
+      { key: "issue", label: "Issue", type: "textarea" },
+      { key: "rule", label: "Rule of law", type: "textarea" },
+      { key: "holding", label: "Holding", type: "textarea" },
+      { key: "reasoning", label: "Reasoning", type: "textarea" },
+    ];
+
+    const FIELDS = [...HEADER_FIELDS, ...SECTION_FIELDS];
+    const emptyBrief = Object.fromEntries(FIELDS.map((f) => [f.key, ""]));
+
+    function formatBrief(brief) {
+      const title = brief.caseName.trim() || "Untitled case";
+      const citation = brief.citation.trim();
+      const court = brief.court.trim();
+      const lines = [citation ? `${title} ${citation}` : title];
+      if (court) lines.push(court);
+      for (const field of SECTION_FIELDS) {
+        const value = brief[field.key].trim();
+        if (value) lines.push("", field.label.toUpperCase(), value);
+      }
+      return lines.join("\n");
+    }
+
+    function missingSections(brief) {
+      return SECTION_FIELDS.filter((f) => !brief[f.key].trim()).map((f) => f.label);
+    }
+
+    /* ---------- BriefForm ---------- */
+    function BriefForm({ brief, onChange, onReset }) {
+      return (
+        <form className="panel" onSubmit={(e) => e.preventDefault()}>
+          <h2>Case details</h2>
+          {FIELDS.map((field) => {
+            const id = `field-${field.key}`;
+            const shared = {
+              id,
+              value: brief[field.key],
+              placeholder: field.placeholder,
+              list: field.options ? `${id}-options` : undefined,
+              onChange: (e) => onChange(field.key, e.target.value),
+            };
+            return (
+              <div className="field" key={field.key}>
+                <label htmlFor={id}>{field.label}</label>
+                {field.type === "textarea" ? (
+                  <textarea rows={4} {...shared} />
+                ) : (
+                  <input type="text" {...shared} />
+                )}
+                {field.options && (
+                  <datalist id={`${id}-options`}>
+                    {field.options.map((o) => <option key={o} value={o} />)}
+                  </datalist>
+                )}
+              </div>
+            );
+          })}
+          <button type="button" className="btn btn-secondary" onClick={onReset}>
+            Clear form
+          </button>
+        </form>
+      );
+    }
+
+    /* ---------- BriefPreview ---------- */
+    function BriefPreview({ brief }) {
+      const [copyState, setCopyState] = useState("idle");
+      const title = brief.caseName.trim() || "Untitled case";
+      const citation = brief.citation.trim();
+      const court = brief.court.trim();
+      const missing = missingSections(brief);
+
+      async function handleCopy() {
+        try {
+          await navigator.clipboard.writeText(formatBrief(brief));
+          setCopyState("copied");
+        } catch {
+          setCopyState("failed");
+        }
+        setTimeout(() => setCopyState("idle"), 2000);
+      }
+
+      const copyLabel =
+        copyState === "copied" ? "Copied!" : copyState === "failed" ? "Copy failed" : "Copy brief";
+
+      return (
+        <section className="panel">
+          <h2>Brief</h2>
+          <h3 className="brief-title">
+            {title} {citation && <span className="brief-citation">{citation}</span>}
+          </h3>
+          {court && <p className="brief-court">{court}</p>}
+          {SECTION_FIELDS.map((field) => {
+            const value = brief[field.key].trim();
+            if (!value) return null;
+            return (
+              <div className="brief-section" key={field.key}>
+                <h4>{field.label}</h4>
+                <p>{value}</p>
+              </div>
+            );
+          })}
+          {missing.length > 0 && <p className="hint">Still to fill in: {missing.join(", ")}</p>}
+          <button type="button" className="btn" onClick={handleCopy}>{copyLabel}</button>
+        </section>
+      );
+    }
+
+    /* ---------- App ---------- */
+    function App() {
+      const [brief, setBrief] = useState(emptyBrief);
+
+      function handleChange(key, value) {
+        setBrief((prev) => ({ ...prev, [key]: value }));
+      }
+      function handleReset() {
+        setBrief(emptyBrief);
+      }
+
+      return (
+        <main className="app">
+          <header className="app-header">
+            <img
+              src="./logo.png"
+              alt="Logo"
+              className="logo"
+              onError={(e) => (e.target.style.display = "none")}
+            />
+            <h1>Case Brief Builder</h1>
+          </header>
+          <p className="subtitle">Fill in the form and your brief builds as you type.</p>
+          <div className="layout">
+            <BriefForm brief={brief} onChange={handleChange} onReset={handleReset} />
+            <BriefPreview brief={brief} />
+          </div>
+        </main>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
